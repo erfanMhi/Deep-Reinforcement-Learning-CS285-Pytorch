@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from torch import optim
 from .base_policy import BasePolicy
-from cs285.infrastructure.torch_utils import MLP, multivariate_normal_diag
+from cs285.infrastructure.torch_utils import MLP, multivariate_normal_diag, convert_args_to_tensor
 from torch.distributions import Categorical
 
 
@@ -142,6 +142,7 @@ class MLPPolicy(BasePolicy):
 
     # query the neural net that's our 'policy' function, as defined by an mlp above
     # query the policy with observation(s) to get selected action(s)
+    @convert_args_to_tensor()
     def get_action(self, obs):
         
         if len(obs.shape)>1:
@@ -149,7 +150,7 @@ class MLPPolicy(BasePolicy):
         else:
             observation = obs[None]
 
-        observation = torch.from_numpy(observation).type(torch.FloatTensor)
+        # observation = torch.from_numpy(observation).type(torch.FloatTensor)
 
         # TODO return the action that the policy prescribes
         # HINT1: you will need to call self.sess.run
@@ -182,23 +183,24 @@ class MLPPolicySL(MLPPolicy):
 
 class MLPPolicyPG(MLPPolicy):
 
-
+    @convert_args_to_tensor()
     def run_baseline_prediction(self, obs):
         
-        observations = torch.from_numpy(obs).type(torch.FloatTensor)
+        # observations = torch.from_numpy(obs).type(torch.FloatTensor)
         # TODO: query the neural net that's our 'baseline' function, as defined by an mlp above
         # HINT1: query it with observation(s) to get the baseline value(s)
         # HINT2: see build_baseline_forward_pass (above) to see the tensor that we're interested in
         # HINT3: this will be very similar to how you implemented get_action (above)
-        return self.baseline_prediction(observations).detach().numpy()
+        return self.baseline_prediction(obs).detach().numpy()
 
+    @convert_args_to_tensor()
     def update(self, observations, acs_na, adv_n=None, acs_labels_na=None, qvals=None):
         assert(self.training, 'Policy must be created with training=True in order to perform training updates...')
 
-        adv_n = torch.from_numpy(adv_n).type(torch.FloatTensor)
-        observations = torch.from_numpy(observations).type(torch.FloatTensor)
-        acs_na = torch.from_numpy(acs_na).type(torch.FloatTensor)
-        qvals = torch.from_numpy(qvals).type(torch.FloatTensor)
+        # adv_n = torch.from_numpy(adv_n).type(torch.FloatTensor)
+        # observations = torch.from_numpy(observations).type(torch.FloatTensor)
+        # acs_na = torch.from_numpy(acs_na).type(torch.FloatTensor)
+        # qvals = torch.from_numpy(qvals).type(torch.FloatTensor)
 
         self.optimizer.zero_grad()
         
