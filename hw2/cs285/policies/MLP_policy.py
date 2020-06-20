@@ -63,7 +63,6 @@ class MLPPolicy(BasePolicy):
 
     def _build_action_sampling(self, observation):
 
-        observation = torch.Tensor(observation)
 
         if self.discrete:
             probs = self.parameters
@@ -90,9 +89,6 @@ class MLPPolicy(BasePolicy):
 
 
     def _define_log_prob(self, observation, action):
-
-        observation = torch.Tensor(observation)
-        action = torch.Tensor(action)
 
         if self.discrete:
             #log probability under a categorical distribution
@@ -127,7 +123,7 @@ class MLPPolicy(BasePolicy):
     def restore(self, filepath):
         checkpoint = torch.load(filepath)
         if self.discrete:
-            probs = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size, output_activation=nn.Softmax(dim=1))
+            probs = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size, output_activation=nn.Softmax(dim=-1))
             probs.load_state_dict(checkpoint['probs'])
             self.parameters = probs
         else:
@@ -152,6 +148,8 @@ class MLPPolicy(BasePolicy):
             observation = obs
         else:
             observation = obs[None]
+
+        observation = torch.from_numpy(observation).type(torch.FloatTensor)
 
         # TODO return the action that the policy prescribes
         # HINT1: you will need to call self.sess.run
@@ -187,25 +185,28 @@ class MLPPolicyPG(MLPPolicy):
 
     def run_baseline_prediction(self, obs):
         
-        observations = torch.Tensor(obs)
+        observations = torch.from_numpy(obs).type(torch.FloatTensor)
         # TODO: query the neural net that's our 'baseline' function, as defined by an mlp above
         # HINT1: query it with observation(s) to get the baseline value(s)
         # HINT2: see build_baseline_forward_pass (above) to see the tensor that we're interested in
         # HINT3: this will be very similar to how you implemented get_action (above)
-        return self.baseline_prediction(observations).numpy()
+        return self.baseline_prediction(observations).detach().numpy()
 
     def update(self, observations, acs_na, adv_n=None, acs_labels_na=None, qvals=None):
         assert(self.training, 'Policy must be created with training=True in order to perform training updates...')
 
-        adv_n = torch.Tensor(adv_n)
-        observations = torch.Tensor(observations)
-        acs_na = torch.Tensor(acs_na)
+        adv_n = torch.from_numpy(adv_n).type(torch.FloatTensor)
+        observations = torch.from_numpy(observations).type(torch.FloatTensor)
+        acs_na = torch.from_numpy(acs_na).type(torch.FloatTensor)
+        qvals = torch.from_numpy(qvals).type(torch.FloatTensor)
+
+        self.optimizer.zero_grad()
         
         logprob_n = self._define_log_prob(observations, acs_na)
 
         loss = -1 * torch.sum(logprob_n * adv_n)
 
-        self.optimizer.zero_grad()
+
         loss.backward()
         self.optimizer.step()
 
