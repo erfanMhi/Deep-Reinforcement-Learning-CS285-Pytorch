@@ -144,19 +144,19 @@ class MLPPolicy(BasePolicy):
     # query the policy with observation(s) to get selected action(s)
     @convert_args_to_tensor()
     def get_action(self, obs):
-        
-        if len(obs.shape)>1:
-            observation = obs
-        else:
-            observation = obs[None]
+        with torch.no_grad():
+            if len(obs.shape)>1:
+                observation = obs
+            else:
+                observation = obs[None]
 
-        # observation = torch.from_numpy(observation).type(torch.FloatTensor)
+            # observation = torch.from_numpy(observation).type(torch.FloatTensor)
 
-        # TODO return the action that the policy prescribes
-        # HINT1: you will need to call self.sess.run
-        # HINT2: the tensor we're interested in evaluating is self.sample_ac
-        # HINT3: in order to run self.sample_ac, it will need observation fed into the feed_dict
-        return  self._build_action_sampling(observation).detach().numpy()
+            # TODO return the action that the policy prescribes
+            # HINT1: you will need to call self.sess.run
+            # HINT2: the tensor we're interested in evaluating is self.sample_ac
+            # HINT3: in order to run self.sample_ac, it will need observation fed into the feed_dict
+            return  self._build_action_sampling(observation).numpy()
 
 #####################################################
 #####################################################
@@ -185,13 +185,14 @@ class MLPPolicyPG(MLPPolicy):
 
     @convert_args_to_tensor()
     def run_baseline_prediction(self, obs):
-        
-        # observations = torch.from_numpy(obs).type(torch.FloatTensor)
-        # TODO: query the neural net that's our 'baseline' function, as defined by an mlp above
-        # HINT1: query it with observation(s) to get the baseline value(s)
-        # HINT2: see build_baseline_forward_pass (above) to see the tensor that we're interested in
-        # HINT3: this will be very similar to how you implemented get_action (above)
-        return self.baseline_prediction(obs).detach().numpy()
+        with torch.no_grad():
+            
+            # observations = torch.from_numpy(obs).type(torch.FloatTensor).detach().detach()
+            # TODO: query the neural net that's our 'baseline' function, as defined by an mlp above
+            # HINT1: query it with observation(s) to get the baseline value(s)
+            # HINT2: see build_baseline_forward_pass (above) to see the tensor that we're interested in
+            # HINT3: this will be very similar to how you implemented get_action (above)
+            return self.baseline_prediction(obs).numpy()
 
     @convert_args_to_tensor()
     def update(self, observations, acs_na, adv_n=None, acs_labels_na=None, qvals=None):
