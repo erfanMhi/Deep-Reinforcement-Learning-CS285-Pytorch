@@ -1,0 +1,2 @@
+model_checkpoint_path: "/home/oriea/Codes/github/Deep-Reinforcement-Learning-CS285/hw1/cs285/scripts/../data/bc_test_bc_cheetah_HalfCheetah-v2_03-06-2020_01-27-00/policy_itr_0"
+all_model_checkpoint_paths: "/home/oriea/Codes/github/Deep-Reinforcement-Learning-CS285/hw1/cs285/scripts/../data/bc_test_bc_cheetah_HalfCheetah-v2_03-06-2020_01-27-00/policy_itr_0"
