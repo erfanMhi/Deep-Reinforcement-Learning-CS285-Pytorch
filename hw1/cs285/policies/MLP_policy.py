@@ -1,8 +1,13 @@
+
+import torch
+
 import numpy as np
-import tensorflow as tf
+import torch.nn as nn
+
+from torch import optim
 from .base_policy import BasePolicy
-from cs285.infrastructure.tf_utils import build_mlp
-import tensorflow_probability as tfp
+from cs285.infrastructure.torch_utils import MLP, multivariate_normal_diag, convert_args_to_tensor
+from torch.distributions import Categorical
 
 class MLPPolicy(BasePolicy):
 
@@ -29,69 +34,79 @@ class MLPPolicy(BasePolicy):
         self.learning_rate = learning_rate 
         self.training = training
 
-        # build TF graph
-        with tf.variable_scope(policy_scope, reuse=tf.AUTO_REUSE):
-            self.build_graph()
+        # Build Torch Graph
+        self.build_graph()
 
-        # saver for policy variables that are not related to training
-        self.policy_vars = [v for v in tf.all_variables() if policy_scope in v.name and 'train' not in v.name]
-        self.policy_saver = tf.train.Saver(self.policy_vars, max_to_keep=None)
 
     ##################################
 
     def build_graph(self):
-        self.define_placeholders()
-        self.define_forward_pass()
-        self.build_action_sampling()
+        # self.define_placeholders()
+        self.define_forward_pass_parameters()
         if self.training:
-            with tf.variable_scope('train', reuse=tf.AUTO_REUSE):
-                self.define_train_op()
+            if self.nn_baseline:
+                self.build_baseline_forward_pass_parameters() 
+            self.define_train_op()
 
     ##################################
- 
-    def define_placeholders(self):    
-        raise NotImplementedError
 
-    def define_forward_pass(self):
+    def define_forward_pass_parameters(self):
         # TODO implement this build_mlp function in tf_utils
-        mean = build_mlp(self.observations_pl, output_size=self.ac_dim, scope='continuous_logits', n_layers=self.n_layers, size=self.size)
-        logstd = tf.Variable(tf.zeros(self.ac_dim), name='logstd')
+        mean = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size)
+        logstd = torch.zeros(self.ac_dim, requires_grad=True)
         self.parameters = (mean, logstd)
 
-    def build_action_sampling(self):
+    def _build_action_sampling(self, observation):
         mean, logstd = self.parameters
-        self.sample_ac = mean + tf.exp(logstd) * tf.random_normal(tf.shape(mean), 0, 1) # N
+        probs_out = mean(observation)
+        sample_ac = probs_out + torch.exp(logstd) * torch.randn(probs_out.size())
+        return sample_ac
+
 
     def define_train_op(self):
-        raise NotImplementedError
+        mean, logstd = self.parameters
+        self.optimizer = optim.Adam([logstd] + list(mean.parameters()), lr=self.learning_rate)
+        self.mse_criterion = torch.nn.MSELoss(reduction='mean')
 
     ##################################
 
     def save(self, filepath):
-        self.policy_saver.save(self.sess, filepath, write_meta_graph=False)
+        mean, logstd = self.parameters
+        save_dic = {
+                    'logstd': logstd,
+                    'mean_preds': mean.state_dict(),
+                    }
+        torch.save(save_dic, filepath)
 
     def restore(self, filepath):
-        self.policy_saver.restore(self.sess, filepath)
+        checkpoint = torch.load(filepath)
+        mean = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size)
+        logstd = checkpoint[checkpoint['logstd']]
+        mean.load_state_dict(checkpoint['mean_preds'])
+        self.parameters = (mean, logstd)
 
     ##################################
 
     # query this policy with observation(s) to get selected action(s)
+    @convert_args_to_tensor()
     def get_action(self, obs):
-        
-        if len(obs.shape)>1:
-            observation = obs
-        else:
-            observation = obs[None]
+        with torch.no_grad():
+            if len(obs.shape)>1:
+                observation = obs
+            else:
+                observation = obs[None]
 
-        # TODO return the action that the policy prescribes
-        # HINT1: you will need to call self.sess.run
-        # HINT2: the tensor we're interested in evaluating is self.sample_ac
-        # HINT3: in order to run self.sample_ac, it will need observation fed into the feed_dict
-        return self.sess.run(self.sample_ac, feed_dict={self.observations_pl: observation})
+            # observation = torch.from_numpy(observation).type(torch.FloatTensor)
+
+            # TODO return the action that the policy prescribes
+            # HINT1: you will need to call self.sess.run
+            # HINT2: the tensor we're interested in evaluating is self.sample_ac
+            # HINT3: in order to run self.sample_ac, it will need observation fed into the feed_dict
+            return  self._build_action_sampling(observation).numpy()
 
     # update/train this policy
     def update(self, observations, actions):
-        raise NotImplementedError
+        raise NotImplementedError 
 
 #####################################################
 #####################################################
@@ -104,28 +119,13 @@ class MLPPolicySL(MLPPolicy):
         The relevant functions to define are included below.
     """
 
-    def define_placeholders(self):
-        # placeholder for observations
-        self.observations_pl = tf.placeholder(shape=[None, self.ob_dim], name="ob", dtype=tf.float32)
-
-        # placeholder for actions
-        self.actions_pl = tf.placeholder(shape=[None, self.ac_dim], name="ac", dtype=tf.float32)
-
-        if self.training:
-            self.acs_labels_na = tf.placeholder(shape=[None, self.ac_dim], name="labels", dtype=tf.float32)
-
-    def define_train_op(self):
-        true_actions = self.acs_labels_na
-        predicted_actions = self.sample_ac
-
-        # TODO define the loss that will be used to train this policy
-        # HINT1: remember that we are doing supervised learning
-        # HINT2: use tf.losses.mean_squared_error
-        self.loss = tf.losses.mean_squared_error(true_actions, predicted_actions)
-        self.train_op = tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss)
-
+    @convert_args_to_tensor()
     def update(self, observations, actions):
         assert(self.training, 'Policy must be created with training=True in order to perform training updates...')
-        _, loss = self.sess.run([self.train_op, self.loss], feed_dict={self.observations_pl: observations, self.acs_labels_na: actions})
-        # print('Loss: ', loss) # TODO this is just for debugging
+        sample_ac = self._build_action_sampling(observations)
+        loss = self.mse_criterion(actions, sample_ac)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
