@@ -2,6 +2,7 @@ import time
 from collections import OrderedDict
 import pickle
 import numpy as np
+import torch
 import tensorflow as tf
 import gym
 import os
@@ -27,13 +28,15 @@ class RL_Trainer(object):
         self.logger = Logger(self.params['logdir'])
         self.sess = create_tf_session(self.params['use_gpu'], which_gpu=self.params['which_gpu'])
 
+
         # Set random seeds
         seed = self.params['seed']
         tf.set_random_seed(seed)
+        torch.manual_seed(seed)
         np.random.seed(seed)
 
         ############# 
-        ## ENV
+        ## ENV 
         #############
 
         # Make the gym environment
@@ -64,15 +67,8 @@ class RL_Trainer(object):
         #############
 
         agent_class = self.params['agent_class']
-        self.agent = agent_class(self.sess, self.env, self.params['agent_params'])
+        self.agent = agent_class(self.env, self.params['agent_params'])
 
-        #############
-        ## INIT VARS
-        #############
-
-        ## TODO initialize all of the TF variables (that were created by agent, etc.)
-        ## HINT: use global_variables_initializer
-        self.sess.run(tf.global_variables_initializer())
 
     def run_training_loop(self, n_iter, collect_policy, eval_policy,
                         initial_expertdata=None, relabel_with_expert=False,

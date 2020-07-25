@@ -1,0 +1,2 @@
+1. dqn_agent.py file: sess and tf execution files should be modified.
+2.

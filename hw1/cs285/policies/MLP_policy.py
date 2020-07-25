@@ -12,7 +12,6 @@ from torch.distributions import Categorical
 class MLPPolicy(BasePolicy):
 
     def __init__(self,
-        sess,
         ac_dim,
         ob_dim,
         n_layers,
@@ -26,7 +25,6 @@ class MLPPolicy(BasePolicy):
         super().__init__(**kwargs)
 
         # init vars
-        self.sess = sess
         self.ac_dim = ac_dim
         self.ob_dim = ob_dim
         self.n_layers = n_layers
@@ -44,8 +42,6 @@ class MLPPolicy(BasePolicy):
         # self.define_placeholders()
         self.define_forward_pass_parameters()
         if self.training:
-            if self.nn_baseline:
-                self.build_baseline_forward_pass_parameters() 
             self.define_train_op()
 
     ##################################
