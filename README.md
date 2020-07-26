@@ -135,14 +135,14 @@ source activate cs285_env
 <!-- LICENSE -->
 ## License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Distributed under the MIT License. See `LICENSE` file for more information.
 
 
 
 <!-- CONTACT -->
 ## Contact
 
-Your Name - [@erfan_mhi](https://twitter.com/erfan_mhi) - miahi@ualberta.com
+Erfan Miahi - [@erfan_mhi](https://twitter.com/erfan_mhi) - miahi@ualberta.com
 
 Project Link: [https://github.com/erfanMhi/Deep-Reinforcement-Learning-CS285-Pytorch](https://github.com/erfanMhi/Deep-Reinforcement-Learning-CS285-Pytorch)
 
@@ -151,6 +151,6 @@ Project Link: [https://github.com/erfanMhi/Deep-Reinforcement-Learning-CS285-Pyt
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 [license-shield]: https://img.shields.io/github/license/othneildrew/Best-README-Template.svg?style=flat-square
-[license-url]: https://github.com/erfanMhi/Deep-Reinforcement-Learning-CS285-Pytorch/blob/master/LICENSE.txt
+[license-url]: https://github.com/erfanMhi/Deep-Reinforcement-Learning-CS285-Pytorch/blob/master/LICENSE
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=flat-square&logo=linkedin&colorB=555
-[linkedin-url]: https://github.com/erfanMhi/Deep-Reinforcement-Learning-CS285-Pytorch/
+[linkedin-url]: https://www.linkedin.com/in/erfan-miahi-8637a1130/
