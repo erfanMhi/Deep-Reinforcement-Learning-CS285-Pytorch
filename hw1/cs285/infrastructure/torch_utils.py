@@ -23,6 +23,7 @@ class MLP(nn.Module):
         
         for layer in self.layers:
             nn.init.xavier_uniform_(layer.weight)
+            nn.init.zeros_(layer.bias)
         
 
     def forward(self, x):

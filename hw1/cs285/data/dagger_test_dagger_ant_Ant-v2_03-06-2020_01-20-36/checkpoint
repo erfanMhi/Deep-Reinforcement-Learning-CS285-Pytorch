@@ -1,2 +1,0 @@
-model_checkpoint_path: "/home/oriea/Codes/github/Deep-Reinforcement-Learning-CS285/hw1/cs285/scripts/../data/dagger_test_dagger_ant_Ant-v2_03-06-2020_01-20-36/policy_itr_9"
-all_model_checkpoint_paths: "/home/oriea/Codes/github/Deep-Reinforcement-Learning-CS285/hw1/cs285/scripts/../data/dagger_test_dagger_ant_Ant-v2_03-06-2020_01-20-36/policy_itr_9"
