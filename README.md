@@ -46,11 +46,11 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-In this project, we aim to create a Pytorch version of CS285 course whose Tensorflow 1 version is already avaiable at <a href="https://github.com/erfanMhi/Deep-Reinforcement-Learning-CS285-Tensorflow">here</a>.
+In this project, we aim to create a Pytorch version of CS285 course whose Tensorflow 1 version is already available at <a href="https://github.com/erfanMhi/Deep-Reinforcement-Learning-CS285-Tensorflow">here</a>.
 
 ### Main Goals
 1. Converting all the Tensorflow 1 code to the newest version of Pytorch
-2. Current version Mujoco enviornment that has been used in this project are old which requires only using Python < 3.6 version. Therefore, we seek to make this project compatible with the newer version of this library and, consequently, Python >= 3.6.
+2. The current version Mujoco environment that has been used in this project is old which requires only using Python < 3.6 version. Therefore, we seek to make this project compatible with the newer version of this library and, consequently, Python >= 3.6.
 
 
 ### Completed So Far
@@ -60,7 +60,7 @@ In this project, we aim to create a Pytorch version of CS285 course whose Tensor
 <!-- GETTING STARTED -->
 ## Getting Started
 
-**Currently, this project is under the development**, and the same libraries that have been employed in Tensorflow version of these assignments plus Pytorch are required for running the assignments of this project. However, we are eager to use the versions of these libraries that are presented in prerequisities section for the future release of this project. 
+**Currently, this project is under development**, and the same libraries that have been employed in the Tensorflow version of these assignments plus Pytorch are required for running the assignments of this project. However, we are eager to use the versions of these libraries that are presented in the prerequisites section for the future release of this project. 
 
 ### Prerequisites
 
@@ -91,10 +91,10 @@ See the [open issues](https://github.com/erfanMhi/Deep-Reinforcement-Learning-CS
 <!-- CONTRIBUTING -->
 ## Contributing
 
-Unfortunately, the current version of this repository is not compatible with the latest versions of libraries such as Tensorflow and Mojocu-py. As a result, installing the proper versions of these libraries that can enable you to contribute to this repo can be a hard challenge. However, since I have been faced with this problem before, I designed a certain number of steps that you can take to install the right versions of these libraries. 
+Unfortunately, the current version of this repository is not compatible with the latest versions of libraries, such as Tensorflow and Mojocu-py. As a result, installing the proper versions of these libraries, which can enable you to contribute to this repo, could be a hard challenge. However, since I have been faced with this problem before, I designed a certain number of steps that you can take to install the right versions of these libraries. 
 
 
-1. Create a new conda enviornment based on Python 3.5 and install matplotlib, ipython, and pytorch. Then, activate it.
+1. Create a new Conda environment based on Python 3.5 and install matplotlib, ipython, and pytorch. Then, activate it.
 ```sh
 conda create -n cs285_env python=3.5 matplotlib ipython pytorch=1.5.0
 source activate cs285_env
@@ -102,7 +102,7 @@ source activate cs285_env
 2. Clone this repository
 2. Install mujoco-py
     1. Get mujoco license key file from <a href="https://www.roboti.us/license.html">its website</a>
-    2. Create a .mujoco folder in home directory and copy the given mjpro150 directory and your license key in it
+    2. Create a .mujoco folder in the home directory and copy the given mjpro150 directory and your license key into it
       ```sh
       mkdir ~/.mujoco/
       cd <location_of_your_license_key>
@@ -110,7 +110,7 @@ source activate cs285_env
       cd <this_repo>/mujoco
       cp -r mjpro150 ~/.mujoco/
       ```
-    3. Add the following line to bottom of your bashrc: 
+    3. Add the following line to bottom of your .bashrc file: 
       ```sh
       export LD_LIBRARY_PATH=~/.mujoco/mjpro150/bin/
       ```
@@ -124,7 +124,7 @@ source activate cs285_env
  ```sh
  pip install --user --requirement contribution_requirements.txt
  ```
-4. At last, it should be considered that before executing scripts of each homework folder (e.g., hw1), you should allow your code to be able to see 'cs285' using execution of the following lines:
+4. At last, it should be considered that before executing scripts of each homework folder (e.g., hw1), you should allow your code to be able to see 'cs285' by executing the following lines:
  ```sh
  cd <path_to_hw>
  pip install -e .
