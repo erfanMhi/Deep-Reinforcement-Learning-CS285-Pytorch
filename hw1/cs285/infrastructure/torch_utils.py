@@ -29,13 +29,16 @@ class MLP(nn.Module):
     def forward(self, x):
         
         out = x
-        for layer in self.layers:
-            out = self.activation(layer(out))
+        for i, layer in enumerate(self.layers):
+            if i!=len(self.layers)-1:
+                out = self.activation(layer(out))
+            else:
+                out = layer(out)
 
         if self.output_activation is not None:
             out = self.output_activation(out)
+       
         return out
-
 
 
 def multivariate_normal_diag(loc, scale_diag):

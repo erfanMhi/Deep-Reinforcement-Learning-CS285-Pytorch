@@ -3,11 +3,12 @@ import torch.nn as nn
 import functools
 import numpy as np
 import inspect
+import torch.nn.functional as F
 
 
 class MLP(nn.Module):
     def __init__(self, input_size, output_size, n_layers, 
-            size, activation=torch.tanh, output_activation=None):
+            size, activation=F.tanh, output_activation=None):
         super(MLP, self).__init__()
         self.input_size = input_size
         self.output_size = output_size
@@ -29,11 +30,15 @@ class MLP(nn.Module):
     def forward(self, x):
         
         out = x
-        for layer in self.layers:
-            out = self.activation(layer(out))
+        for i, layer in enumerate(self.layers):
+            if i!=len(self.layers)-1:
+                out = self.activation(layer(out))
+            else:
+                out = layer(out)
 
         if self.output_activation is not None:
             out = self.output_activation(out)
+       
         return out
 
 

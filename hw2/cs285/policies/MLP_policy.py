@@ -63,7 +63,6 @@ class MLPPolicy(BasePolicy):
 
     def _build_action_sampling(self, observation):
 
-
         if self.discrete:
             probs = self.parameters
             probs_out = probs(observation)

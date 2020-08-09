@@ -50,7 +50,9 @@ def sample_trajectory(env, policy, max_path_length, render=False, render_mode=('
 
     return Path(obs, image_obs, acs, rewards, next_obs, terminals)
 
-def sample_trajectories(env, policy, min_timesteps_per_batch, max_path_length, render=False, render_mode=('rgb_array')):
+def sample_trajectories(env, policy, min_timesteps_per_batch, 
+                        max_path_length, render=False, render_mode=('rgb_array')):
+
     """
         Collect rollouts until we have collected min_timesteps_per_batch steps.
 
@@ -66,6 +68,7 @@ def sample_trajectories(env, policy, min_timesteps_per_batch, max_path_length, r
     return paths, timesteps_this_batch
 
 def sample_n_trajectories(env, policy, ntraj, max_path_length, render=False, render_mode=('rgb_array')):
+
     """
         Collect ntraj rollouts.
 
