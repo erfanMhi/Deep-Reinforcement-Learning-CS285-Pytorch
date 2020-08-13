@@ -2,6 +2,7 @@ import numpy as np
 import time
 
 from .base_agent import BaseAgent
+
 from cs285.policies.MLP_policy import *
 from cs285.infrastructure.replay_buffer import ReplayBuffer
 from cs285.infrastructure.utils import *
@@ -21,6 +22,7 @@ class BCAgent(BaseAgent):
                                self.agent_params['size'],
                                discrete = self.agent_params['discrete'],
                                learning_rate = self.agent_params['learning_rate'],
+                               device = self.agent_params['device'],
                                ) ## TODO: look in here and implement this
 
         # replay buffer

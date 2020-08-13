@@ -21,10 +21,12 @@ class MLPPolicy(BasePolicy):
         policy_scope='policy_vars',
         discrete=False, # unused for now
         nn_baseline=False, # unused for now
+        device='cpu',
         **kwargs):
         super().__init__(**kwargs)
 
         # init vars
+        self.device = device
         self.ac_dim = ac_dim
         self.ob_dim = ob_dim
         self.n_layers = n_layers
@@ -48,14 +50,14 @@ class MLPPolicy(BasePolicy):
 
     def define_forward_pass_parameters(self):
         # TODO implement this build_mlp function in tf_utils
-        mean = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size)
-        logstd = torch.zeros(self.ac_dim, requires_grad=True)
+        mean = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size).to(self.device)
+        logstd = torch.zeros(self.ac_dim, requires_grad=True, device=self.device)
         self.parameters = (mean, logstd)
 
     def _build_action_sampling(self, observation):
         mean, logstd = self.parameters
         probs_out = mean(observation)
-        sample_ac = probs_out + torch.exp(logstd) * torch.randn(probs_out.size())
+        sample_ac = probs_out + torch.exp(logstd) * torch.randn(probs_out.size(), device=self.device)
         return sample_ac
 
 
@@ -77,7 +79,7 @@ class MLPPolicy(BasePolicy):
     def restore(self, filepath):
         checkpoint = torch.load(filepath)
         mean = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size)
-        logstd = checkpoint[checkpoint['logstd']]
+        logstd = checkpoint['logstd']
         mean.load_state_dict(checkpoint['mean_preds'])
         self.parameters = (mean, logstd)
 
@@ -88,16 +90,16 @@ class MLPPolicy(BasePolicy):
     def get_action(self, obs):
         with torch.no_grad():
             if len(obs.shape)>1:
-                observation = obs
+                observation = obs.to(self.device)
             else:
-                observation = obs[None]
+                observation = obs[None].to(self.device)
 
 
             # TODO return the action that the policy prescribes
             # HINT1: you will need to call self.sess.run
             # HINT2: the tensor we're interested in evaluating is self.sample_ac
             # HINT3: in order to run self.sample_ac, it will need observation fed into the feed_dict
-            return self._build_action_sampling(observation).numpy()
+            return self._build_action_sampling(observation).cpu().numpy()
 
     # update/train this policy
     def update(self, observations, actions):
@@ -114,9 +116,11 @@ class MLPPolicySL(MLPPolicy):
         The relevant functions to define are included below.
     """
 
+
     @convert_args_to_tensor()
     def update(self, observations, actions):
-        assert(self.training, 'Policy must be created with training=True in order to perform training updates...')
+        assert self.training, 'Policy must be created with training=True in order to perform training updates...'
+        actions, observations = actions.to(self.device), observations.to(self.device)
         sample_ac = self._build_action_sampling(observations)
         loss = self.mse_criterion(actions, sample_ac)
 

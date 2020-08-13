@@ -1,11 +1,12 @@
 import os
 import time
 import numpy as np
-import tensorflow as tf
+import torch
 
 from cs285.infrastructure.rl_trainer import RL_Trainer
 from cs285.agents.bc_agent import BCAgent
 from cs285.policies.loaded_gaussian_policy import Loaded_Gaussian_Policy
+
 
 class BC_Trainer(object):
 
@@ -20,6 +21,7 @@ class BC_Trainer(object):
             'size': params['size'],
             'learning_rate': params['learning_rate'],
             'max_replay_buffer_size': params['max_replay_buffer_size'],
+            'device': params['device'],
             }
 
         self.params = params
@@ -37,7 +39,7 @@ class BC_Trainer(object):
         #######################
 
         print('Loading expert policy from...', self.params['expert_policy_file'])
-        self.loaded_expert_policy = Loaded_Gaussian_Policy(self.rl_trainer.sess, self.params['expert_policy_file'])
+        self.loaded_expert_policy = Loaded_Gaussian_Policy(self.params['expert_policy_file'], device=params['device'])
         print('Done restoring expert policy...')
 
     def run_training_loop(self):
@@ -51,6 +53,14 @@ class BC_Trainer(object):
             expert_policy=self.loaded_expert_policy,
         )
 
+def _gpu_assigner(params):
+
+    if  params["use_gpu"]:
+        assert torch.cuda.is_available(), 'Cuda is not available'
+        device = torch.device("cuda:" + str(params["which_gpu"]))
+    else:
+        device = torch.device("cpu")
+    return device
 
 def main():
     import argparse
@@ -86,7 +96,8 @@ def main():
     # convert args to dictionary
     params = vars(args)
 
-
+    params['device'] = _gpu_assigner(params)
+    # print('settings.device: ', settings.device)
     ##################################
     ### CREATE DIRECTORY FOR LOGGING
     ##################################

@@ -3,14 +3,12 @@ from collections import OrderedDict
 import pickle
 import numpy as np
 import torch
-import tensorflow as tf
 import gym
 import os
 
 from cs285.infrastructure.utils import *
 from cs285.infrastructure.tf_utils import create_tf_session
 from cs285.infrastructure.logger import Logger
-
 # params for saving rollout videos to tensorboard
 MAX_NVIDEO = 2
 MAX_VIDEO_LEN = 50
@@ -26,12 +24,9 @@ class RL_Trainer(object):
         # Get params, create logger, create TF session
         self.params = params
         self.logger = Logger(self.params['logdir'])
-        self.sess = create_tf_session(self.params['use_gpu'], which_gpu=self.params['which_gpu'])
-
 
         # Set random seeds
         seed = self.params['seed']
-        tf.set_random_seed(seed)
         torch.manual_seed(seed)
         np.random.seed(seed)
 
@@ -108,7 +103,7 @@ class RL_Trainer(object):
                                 self.params['batch_size']) ## TODO implement this function below
             paths, envsteps_this_batch, train_video_paths = training_returns
             self.total_envsteps += envsteps_this_batch
-            print()
+            
             # relabel the collected obs with actions from a provided expert policy
             if relabel_with_expert and itr>=start_relabel_with_expert:
                 paths = self.do_relabel_with_expert(expert_policy, paths) ## TODO implement this function below
