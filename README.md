@@ -54,8 +54,7 @@ In this project, we aim to create a Pytorch version of CS285 course whose Tensor
 
 
 ### Completed So Far
-1. All of homework 1 Tensorflow codes have been converted to Pytorch, except tf codes written in `loaded_gaussian_policy.py`.
-2. Homework 2 Tensorflow codes have been fully replaced by Pytorch.
+2. Homework 1, 2, and 3 Tensorflow codes have been fully replaced by Pytorch.
 
 <!-- GETTING STARTED -->
 ## Getting Started
