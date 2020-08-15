@@ -1,5 +1,6 @@
 import os
 import time
+import torch
 
 from cs285.infrastructure.rl_trainer import RL_Trainer
 from cs285.agents.pg_agent import PGAgent
@@ -16,6 +17,7 @@ class PG_Trainer(object):
             'n_layers': params['n_layers'],
             'size': params['size'],
             'learning_rate': params['learning_rate'],
+            'device': params['device'],
             }
 
         estimate_advantage_args = {
@@ -51,6 +53,16 @@ class PG_Trainer(object):
             )
 
 
+def _gpu_assigner(params):
+
+    if  params["use_gpu"]:
+        assert torch.cuda.is_available(), 'Cuda is not available'
+        device = torch.device("cuda:" + str(params["which_gpu"]))
+    else:
+        device = torch.device("cpu")
+    return device
+
+
 def main():
 
     import argparse
@@ -84,7 +96,8 @@ def main():
 
     # convert to dictionary
     params = vars(args)
-    
+
+    params['device'] = _gpu_assigner(params)   
     # for this assignment, we train on everything we recently collected
     # so making train_batch_size=batch_size 
     params['train_batch_size']=params['batch_size']

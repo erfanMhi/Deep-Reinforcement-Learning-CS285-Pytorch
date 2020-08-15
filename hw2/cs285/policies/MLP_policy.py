@@ -21,10 +21,12 @@ class MLPPolicy(BasePolicy):
         training=True,
         discrete=False, # unused for now
         nn_baseline=False, # unused for now
+        device='cpu',
         **kwargs):
         super().__init__(**kwargs)
 
         # init vars
+        self.device = device
         self.ac_dim = ac_dim
         self.ob_dim = ob_dim
         self.n_layers = n_layers
@@ -55,10 +57,10 @@ class MLPPolicy(BasePolicy):
     def define_forward_pass_parameters(self):
         if self.discrete: 
             probs = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size, output_activation=nn.Softmax(dim=1))
-            self.parameters = probs
+            self.parameters = probs.to(self.device)
         else:
-            mean = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size)
-            logstd = torch.zeros(self.ac_dim, requires_grad=True)
+            mean = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size).to(self.device)
+            logstd = torch.zeros(self.ac_dim, requires_grad=True, device=self.device)
             self.parameters = (mean, logstd)
 
     def _build_action_sampling(self, observation):
@@ -70,7 +72,7 @@ class MLPPolicy(BasePolicy):
         else:
             mean, logstd = self.parameters
             probs_out = mean(observation)
-            sample_ac = probs_out + torch.exp(logstd) * torch.randn(probs_out.size()) # BUG
+            sample_ac = probs_out + torch.exp(logstd) * torch.randn(probs_out.size(), device=self.device) # BUG
         return sample_ac
 
         
@@ -145,9 +147,9 @@ class MLPPolicy(BasePolicy):
     def get_action(self, obs):
         with torch.no_grad():
             if len(obs.shape)>1:
-                observation = obs
+                observation = obs.to(self.device)
             else:
-                observation = obs[None]
+                observation = obs[None].to(self.device)
 
             # observation = torch.from_numpy(observation).type(torch.FloatTensor)
 
@@ -155,7 +157,7 @@ class MLPPolicy(BasePolicy):
             # HINT1: you will need to call self.sess.run
             # HINT2: the tensor we're interested in evaluating is self.sample_ac
             # HINT3: in order to run self.sample_ac, it will need observation fed into the feed_dict
-            return  self._build_action_sampling(observation).numpy()
+            return  self._build_action_sampling(observation).cpu().numpy()
 
 #####################################################
 #####################################################
@@ -170,6 +172,8 @@ class MLPPolicySL(MLPPolicy):
 
     def update(self, observations, actions):
         assert(self.training, 'Policy must be created with training=True in order to perform training updates...')
+        observations, actions = observations.to(self.device), actions.to(self.device)
+        
         sample_ac = self._build_action_sampling(observations)
         loss = self.mse_criterion(actions, sample_ac)
 
@@ -185,7 +189,7 @@ class MLPPolicyPG(MLPPolicy):
     @convert_args_to_tensor()
     def run_baseline_prediction(self, obs):
         with torch.no_grad():
-            
+            obs = obs.to(self.device)                
             # observations = torch.from_numpy(obs).type(torch.FloatTensor).detach().detach()
             # TODO: query the neural net that's our 'baseline' function, as defined by an mlp above
             # HINT1: query it with observation(s) to get the baseline value(s)
@@ -196,11 +200,8 @@ class MLPPolicyPG(MLPPolicy):
     @convert_args_to_tensor()
     def update(self, observations, acs_na, adv_n=None, acs_labels_na=None, qvals=None):
         assert(self.training, 'Policy must be created with training=True in order to perform training updates...')
-
-        # adv_n = torch.from_numpy(adv_n).type(torch.FloatTensor)
-        # observations = torch.from_numpy(observations).type(torch.FloatTensor)
-        # acs_na = torch.from_numpy(acs_na).type(torch.FloatTensor)
-        # qvals = torch.from_numpy(qvals).type(torch.FloatTensor)
+        observations, acs_na, acs_na, adv_n, qvals = \
+            [x.to(self.device) if x is not None else None for x in [observations, acs_na, acs_na, adv_n, qvals]] 
 
         self.optimizer.zero_grad()
         
