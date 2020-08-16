@@ -1,0 +1,6 @@
+README.txt
+setup.py
+cs285.egg-info/PKG-INFO
+cs285.egg-info/SOURCES.txt
+cs285.egg-info/dependency_links.txt
+cs285.egg-info/top_level.txt

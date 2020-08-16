@@ -3,11 +3,14 @@ implementing DQN."""
 import random
 from collections import namedtuple
 
+import torch
 import gym
 import numpy as np
-import tensorflow as tf
 import tensorflow.contrib.layers as layers
+import torch.nn as nn
+import torch.nn.functional as F
 
+from torch import optim
 from cs285.infrastructure.atari_wrappers import wrap_deepmind
 
 OptimizerSpec = namedtuple("OptimizerSpec", ["constructor", "kwargs", "lr_schedule"])
@@ -19,10 +22,10 @@ def get_env_kwargs(env_name):
             'target_update_freq': 10000,
             'replay_buffer_size': int(1e6),
             'num_timesteps': int(2e8),
-            'q_func': atari_model,
+            'q_func': AtariModel,
             'learning_freq': 4,
             'grad_norm_clipping': 10,
-            'input_shape': (84, 84, 4),
+            'input_shape': (84, 84),
             'env_wrappers': wrap_deepmind,
             'frame_history_len': 4,
             'gamma': 0.99,
@@ -35,7 +38,7 @@ def get_env_kwargs(env_name):
             return env
         kwargs = {
             'optimizer_spec': lander_optimizer(),
-            'q_func': lander_model,
+            'q_func': LanderModel,
             'replay_buffer_size': 50000,
             'batch_size': 32,
             'gamma': 1.00,
@@ -56,31 +59,109 @@ def get_env_kwargs(env_name):
     return kwargs
 
 
-def lander_model(obs, num_actions, scope, reuse=False):
-    with tf.variable_scope(scope, reuse=reuse):
-        out = obs
-        with tf.variable_scope("action_value"):
-            out = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.relu)
-            out = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.relu)
-            out = layers.fully_connected(out, num_outputs=num_actions, activation_fn=None)
 
+def conv_output_shape(h_w, kernel_size=1, stride=1, pad=0, dilation=1):
+    """
+    Utility function for computing output of convolutions
+    takes a tuple of (h,w) and returns a tuple of (h,w)
+    """
+    
+    if type(h_w) is not tuple:
+        h_w = (h_w, h_w)
+    
+    if type(kernel_size) is not tuple:
+        kernel_size = (kernel_size, kernel_size)
+    
+    if type(stride) is not tuple:
+        stride = (stride, stride)
+    
+    if type(pad) is not tuple:
+        pad = (pad, pad)
+    
+    h = (h_w[0] + (2 * pad[0]) - (dilation * (kernel_size[0] - 1)) - 1)// stride[0] + 1
+    w = (h_w[1] + (2 * pad[1]) - (dilation * (kernel_size[1] - 1)) - 1)// stride[1] + 1
+    
+    return h, w
+
+def get_same_padding_size(kernel_size=1, stride=1, dilation=1):
+    """
+    A utility function which calculated the padding size needed to 
+    get the same padding functionality as same as tensorflow Conv2D implementation
+    """
+    neg_padding_size = (stride - dilation*kernel_size + dilation -1)/2
+    if neg_padding_size>0:
+        return 0
+    return int(np.ceil(np.abs(neg_padding_size)))
+
+class LanderModel(nn.Module):
+    def __init__(self, input_size, output_size, output_activation=None):
+        super(LanderModel, self).__init__()
+        self.input_size = input_size
+        self.output_size = output_size
+        
+        self.layer1 = nn.Linear(self.input_size, 64)
+        nn.init.xavier_uniform_(self.layer1.weight)
+        nn.init.zeros_(self.layer1.bias)
+        
+        self.layer2 = nn.Linear(64, 64)
+        nn.init.xavier_uniform_(self.layer2.weight)
+        nn.init.zeros_(self.layer2.bias)
+        
+        self.layer3 = nn.Linear(64, output_size)
+        print(self.layer3.weight)
+        nn.init.xavier_uniform_(self.layer3.weight)
+        nn.init.zeros_(self.layer3.bias)
+        
+    def forward(self, x):
+        
+        out = x
+        out = F.relu(self.layer1(out))
+        out = F.relu(self.layer2(out))
+        out = self.layer3(out)
+        
         return out
 
 
-def atari_model(img_input, num_actions, scope, reuse=False):
-    with tf.variable_scope(scope, reuse=reuse):
-        out = tf.cast(img_input, tf.float32) / 255.0
-        with tf.variable_scope("convnet"):
-            # original architecture
-            out = layers.convolution2d(out, num_outputs=32, kernel_size=8, stride=4, activation_fn=tf.nn.relu)
-            out = layers.convolution2d(out, num_outputs=64, kernel_size=4, stride=2, activation_fn=tf.nn.relu)
-            out = layers.convolution2d(out, num_outputs=64, kernel_size=3, stride=1, activation_fn=tf.nn.relu)
-        out = layers.flatten(out)
-        with tf.variable_scope("action_value"):
-            out = layers.fully_connected(out, num_outputs=512, activation_fn=tf.nn.relu)
-            out = layers.fully_connected(out, num_outputs=num_actions, activation_fn=None)
+class AtariModel(nn.Module):
+    def __init__(self, img_input, num_actions):
+        super(AtariModel, self).__init__()
 
-        return out
+        # Using Padding 'same' Like tensorflow
+        padding_size = get_same_padding_size(kernel_size=8, stride=4)
+        self.conv1 = nn.Conv2d(4, 32, 8, stride=4, padding=padding_size)
+        nn.init.xavier_uniform_(self.conv1.weight)
+        nn.init.zeros_(self.conv1.bias)
+        
+        out_size = conv_output_shape(img_input, 8, 4, padding_size)
+        padding_size = get_same_padding_size(kernel_size=4, stride=2)
+        self.conv2 = nn.Conv2d(32, 64, 4, stride=2, padding=padding_size)
+        nn.init.xavier_uniform_(self.conv2.weight)
+        nn.init.zeros_(self.conv2.bias)
+        
+        out_size = conv_output_shape(out_size, 4, 2, padding_size)
+        padding_size = get_same_padding_size(kernel_size=3, stride=1)
+        self.conv3 = nn.Conv2d(64, 64, 3, stride=1, padding=padding_size)
+        nn.init.xavier_uniform_(self.conv3.weight)
+        nn.init.zeros_(self.conv3.bias)
+
+        self.conv_out_size = np.prod(conv_output_shape(out_size, 3, 1, padding_size)) * 64
+        
+        self.fc1 = nn.Linear(self.conv_out_size, 512)
+        nn.init.xavier_uniform_(self.fc1.weight)
+        nn.init.zeros_(self.fc1.bias)
+        
+        self.fc2 = nn.Linear(512, num_actions)
+        nn.init.xavier_uniform_(self.fc2.weight)
+        nn.init.zeros_(self.fc2.bias)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.view(-1, self.conv_out_size)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
 def atari_exploration_schedule(num_timesteps):
     return PiecewiseSchedule(
@@ -113,15 +194,15 @@ def atari_optimizer(num_timesteps):
         outside_value=5e-5 * lr_multiplier)
 
     return OptimizerSpec(
-        constructor=tf.train.AdamOptimizer,
-        kwargs=dict(epsilon=1e-4),
+        constructor=optim.Adam,
+        kwargs=dict(eps=1e-4),
         lr_schedule=lr_schedule
     )
 
 
 def lander_optimizer():
     return OptimizerSpec(
-        constructor=tf.train.AdamOptimizer,
+        constructor=optim.Adam,
         lr_schedule=ConstantSchedule(1e-3),
         kwargs={}
     )
@@ -135,16 +216,15 @@ def lander_exploration_schedule(num_timesteps):
         ], outside_value=0.02
     )
 
-
-def huber_loss(x, delta=1.0):
+def huber_loss(input, target, delta=1.):
+    # type: (Tensor, Tensor, float) -> Tensor
     # https://en.wikipedia.org/wiki/Huber_loss
-    return tf.where(
-        tf.abs(x) < delta,
-        tf.square(x) * 0.5,
-        delta * (tf.abs(x) - 0.5 * delta)
-    )
-
-
+    t = torch.abs(input - target)
+    return torch.where(
+          t < delta, 0.5 * t ** 2, 
+          t * delta - (0.5 * delta ** 2)
+          )
+    
 def sample_n_unique(sampling_f, n):
     """Helper function. Given a function `sampling_f` that returns
     comparable objects, sample n such unique objects.
@@ -242,57 +322,57 @@ class LinearSchedule(object):
         fraction  = min(float(t) / self.schedule_timesteps, 1.0)
         return self.initial_p + fraction * (self.final_p - self.initial_p)
 
-def compute_exponential_averages(variables, decay):
-    """Given a list of tensorflow scalar variables
-    create ops corresponding to their exponential
-    averages
-    Parameters
-    ----------
-    variables: [tf.Tensor]
-        List of scalar tensors.
-    Returns
-    -------
-    averages: [tf.Tensor]
-        List of scalar tensors corresponding to averages
-        of al the `variables` (in order)
-    apply_op: tf.runnable
-        Op to be run to update the averages with current value
-        of variables.
-    """
-    averager = tf.train.ExponentialMovingAverage(decay=decay)
-    apply_op = averager.apply(variables)
-    return [averager.average(v) for v in variables], apply_op
+# def compute_exponential_averages(variables, decay):
+#     """Given a list of tensorflow scalar variables
+#     create ops corresponding to their exponential
+#     averages
+#     Parameters
+#     ----------
+#     variables: [tf.Tensor]
+#         List of scalar tensors.
+#     Returns
+#     -------
+#     averages: [tf.Tensor]
+#         List of scalar tensors corresponding to averages
+#         of al the `variables` (in order)
+#     apply_op: tf.runnable
+#         Op to be run to update the averages with current value
+#         of variables.
+#     """
+#     averager = tf.train.ExponentialMovingAverage(decay=decay)
+#     apply_op = averager.apply(variables)
+#     return [averager.average(v) for v in variables], apply_op
 
-def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
-    """Minimized `objective` using `optimizer` w.r.t. variables in
-    `var_list` while ensure the norm of the gradients for each
-    variable is clipped to `clip_val`
-    """
-    gradients = optimizer.compute_gradients(objective, var_list=var_list)
-    for i, (grad, var) in enumerate(gradients):
-        if grad is not None:
-            gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
-    return optimizer.apply_gradients(gradients)
+# def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
+#     """Minimized `objective` using `optimizer` w.r.t. variables in
+#     `var_list` while ensure the norm of the gradients for each
+#     variable is clipped to `clip_val`
+#     """
+#     gradients = optimizer.compute_gradients(objective, var_list=var_list)
+#     for i, (grad, var) in enumerate(gradients):
+#         if grad is not None:
+#             gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
+#     return optimizer.apply_gradients(gradients)
 
-def initialize_interdependent_variables(session, vars_list, feed_dict):
-    """Initialize a list of variables one at a time, which is useful if
-    initialization of some variables depends on initialization of the others.
-    """
-    vars_left = vars_list
-    while len(vars_left) > 0:
-        new_vars_left = []
-        for v in vars_left:
-            try:
-                session.run(tf.variables_initializer([v]), feed_dict)
-            except tf.errors.FailedPreconditionError:
-                new_vars_left.append(v)
-        if len(new_vars_left) >= len(vars_left):
-            # This can happen if the variables all depend on each other, or more likely if there's
-            # another variable outside of the list, that still needs to be initialized. This could be
-            # detected here, but life's finite.
-            raise Exception("Cycle in variable dependencies, or extenrnal precondition unsatisfied.")
-        else:
-            vars_left = new_vars_left
+# def initialize_interdependent_variables(session, vars_list, feed_dict):
+#     """Initialize a list of variables one at a time, which is useful if
+#     initialization of some variables depends on initialization of the others.
+#     """
+#     vars_left = vars_list
+#     while len(vars_left) > 0:
+#         new_vars_left = []
+#         for v in vars_left:
+#             try:
+#                 session.run(tf.variables_initializer([v]), feed_dict)
+#             except tf.errors.FailedPreconditionError:
+#                 new_vars_left.append(v)
+#         if len(new_vars_left) >= len(vars_left):
+#             # This can happen if the variables all depend on each other, or more likely if there's
+#             # another variable outside of the list, that still needs to be initialized. This could be
+#             # detected here, but life's finite.
+#             raise Exception("Cycle in variable dependencies, or extenrnal precondition unsatisfied.")
+#         else:
+#             vars_left = new_vars_left
 
 def get_wrapper_by_name(env, classname):
     currentenv = env
@@ -428,11 +508,12 @@ class MemoryOptimizedReplayBuffer(object):
             frames = [np.zeros_like(self.obs[0]) for _ in range(missing_context)]
             for idx in range(start_idx, end_idx):
                 frames.append(self.obs[idx % self.size])
-            return np.concatenate(frames, 2)
+            # print(np.concatenate(frames, 0).shape)
+            return np.concatenate(frames, 0)
         else:
             # this optimization has potential to saves about 30% compute time \o/
-            img_h, img_w = self.obs.shape[1], self.obs.shape[2]
-            return self.obs[start_idx:end_idx].transpose(1, 2, 0, 3).reshape(img_h, img_w, -1)
+            img_h, img_w = self.obs.shape[2], self.obs.shape[3]
+            return self.obs[start_idx:end_idx].transpose(0, 2, 3, 1).reshape(-1, img_h, img_w)
 
     def store_frame(self, frame):
         """Store a single frame in the buffer at the next available index, overwriting

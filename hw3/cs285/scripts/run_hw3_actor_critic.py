@@ -3,7 +3,7 @@ import gym
 import pdb
 import time
 import numpy as np 
-import tensorflow as tf 
+import torch
 
 from cs285.infrastructure.rl_trainer import RL_Trainer
 from cs285.agents.ac_agent import ACAgent
@@ -22,6 +22,7 @@ class AC_Trainer(object):
             'learning_rate': params['learning_rate'],
             'num_target_updates': params['num_target_updates'],
             'num_grad_steps_per_target_update': params['num_grad_steps_per_target_update'],
+            'device': params['device']
             }
 
         estimate_advantage_args = {
@@ -55,6 +56,16 @@ class AC_Trainer(object):
             collect_policy = self.rl_trainer.agent.actor,
             eval_policy = self.rl_trainer.agent.actor,
             )
+
+
+def _gpu_assigner(params):
+
+    if  params["use_gpu"]:
+        assert torch.cuda.is_available(), 'Cuda is not available'
+        device = torch.device("cuda:" + str(params["which_gpu"]))
+    else:
+        device = torch.device("cpu")
+    return device
 
 
 def main():
@@ -95,6 +106,7 @@ def main():
     # convert to dictionary
     params = vars(args)
 
+    params['device'] = _gpu_assigner(params)
     # for policy gradient, we made a design decision
     # to force batch_size = train_batch_size
     # note that, to avoid confusion, you don't even have a train_batch_size argument anymore (above)

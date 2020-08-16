@@ -1,5 +1,6 @@
 import os
 import time
+import torch
 
 from cs285.infrastructure.rl_trainer import RL_Trainer
 from cs285.agents.dqn_agent import DQNAgent
@@ -16,6 +17,7 @@ class Q_Trainer(object):
             'num_critic_updates_per_agent_update': params['num_critic_updates_per_agent_update'],
             'train_batch_size': params['batch_size'],
             'double_q': params['double_q'],
+            'device': params['device']
         }
 
         env_args = get_env_kwargs(params['env_name'])
@@ -35,6 +37,16 @@ class Q_Trainer(object):
             collect_policy = self.rl_trainer.agent.actor,
             eval_policy = self.rl_trainer.agent.actor,
             )
+
+def _gpu_assigner(params):
+
+    if  params["use_gpu"]:
+        assert torch.cuda.is_available(), 'Cuda is not available'
+        device = torch.device("cuda:" + str(params["which_gpu"]))
+    else:
+        device = torch.device("cpu")
+    return device
+
 
 def main():
 
@@ -66,6 +78,8 @@ def main():
 
     # convert to dictionary
     params = vars(args)
+
+    params['device'] = _gpu_assigner(params)
     params['video_log_freq'] = -1 # This param is not used for DQN
     ##################################
     ### CREATE DIRECTORY FOR LOGGING
