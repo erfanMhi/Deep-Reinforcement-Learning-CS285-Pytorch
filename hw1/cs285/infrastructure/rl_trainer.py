@@ -7,7 +7,6 @@ import gym
 import os
 
 from cs285.infrastructure.utils import *
-from cs285.infrastructure.tf_utils import create_tf_session
 from cs285.infrastructure.logger import Logger
 # params for saving rollout videos to tensorboard
 MAX_NVIDEO = 2
@@ -21,7 +20,7 @@ class RL_Trainer(object):
         ## INIT
         #############
 
-        # Get params, create logger, create TF session
+        # Get params, create logger
         self.params = params
         self.logger = Logger(self.params['logdir'])
 
