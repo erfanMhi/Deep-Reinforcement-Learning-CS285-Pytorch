@@ -6,7 +6,6 @@ from .base_policy import BasePolicy
 class MPCPolicy(BasePolicy):
 
     def __init__(self,
-        sess,
         env,
         ac_dim,
         dyn_models,
@@ -16,7 +15,6 @@ class MPCPolicy(BasePolicy):
         super().__init__(**kwargs)
 
         # init vars
-        self.sess = sess
         self.env = env
         self.dyn_models = dyn_models
         self.horizon = horizon
@@ -34,7 +32,7 @@ class MPCPolicy(BasePolicy):
     def sample_action_sequences(self, num_sequences, horizon):
         # TODO(Q1) uniformly sample trajectories and return an array of
         # dimensions (num_sequences, horizon, self.ac_dim)
-        return random_action_sequences
+        return (np.random.rand(num_sequences, horizon, self.ac_dim) * (self.high - self.low)) + self.low
 
     def get_action(self, obs):
 
@@ -49,21 +47,26 @@ class MPCPolicy(BasePolicy):
         predicted_rewards_per_ens = []
 
         for model in self.dyn_models:
-            pass
             # TODO(Q2)
 
             # for each candidate action sequence, predict a sequence of
             # states for each dynamics model in your ensemble
-
+            
+            next_obs = np.tile(obs, (self.N, 1))
+            reward = np.zeros(self.N)
+            for i in range(self.horizon):
+                r, _ = self.env.get_reward(next_obs, candidate_action_sequences[:, i, :])
+                reward += r
+                next_obs = model.get_prediction(next_obs, candidate_action_sequences[:, i, :], self.data_statistics)
             # once you have a sequence of predicted states from each model in your
             # ensemble, calculate the reward for each sequence using self.env.get_reward (See files in envs to see how to call this)
-
+            predicted_rewards_per_ens.append(reward)
         # calculate mean_across_ensembles(predicted rewards).
         # the matrix dimensions should change as follows: [ens,N] --> N
-        predicted_rewards = None # TODO(Q2)
+        predicted_rewards = np.array(predicted_rewards_per_ens).mean(0) # TODO(Q2)
 
         # pick the action sequence and return the 1st element of that sequence
-        best_index = None #TODO(Q2)
-        best_action_sequence = None #TODO(Q2)
-        action_to_take = None # TODO(Q2)
+        best_index = predicted_rewards.argmax() #TODO(Q2)
+        best_action_sequence = candidate_action_sequences[best_index] #TODO(Q2)
+        action_to_take = best_action_sequence[0] # TODO(Q2)
         return action_to_take[None] # the None is for matching expected dimensions

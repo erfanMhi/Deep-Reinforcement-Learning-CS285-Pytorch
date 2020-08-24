@@ -1,5 +1,6 @@
 import os
 import time
+import torch
 
 from cs285.infrastructure.rl_trainer import RL_Trainer
 from cs285.agents.mb_agent import MBAgent
@@ -18,6 +19,7 @@ class MB_Trainer(object):
             'n_layers': params['n_layers'],
             'size': params['size'],
             'learning_rate': params['learning_rate'],
+            'device': params['device']
             }
 
         train_args = {
@@ -48,6 +50,15 @@ class MB_Trainer(object):
             collect_policy = self.rl_trainer.agent.actor,
             eval_policy = self.rl_trainer.agent.actor,
             )
+
+def _gpu_assigner(params):
+
+    if  params["use_gpu"]:
+        assert torch.cuda.is_available(), 'Cuda is not available'
+        device = torch.device("cuda:" + str(params["which_gpu"]))
+    else:
+        device = torch.device("cpu")
+    return device
 
 
 def main():
@@ -85,6 +96,9 @@ def main():
     # convert to dictionary
     params = vars(args)
 
+    # Assigning GPU or CPU device
+    params['device'] = _gpu_assigner(params)
+    
     # HARDCODE EPISODE LENGTHS FOR THE ENVS USED IN THIS MB ASSIGNMENT
     if params['env_name']=='reacher-cs285-v0':
         params['ep_len']=200

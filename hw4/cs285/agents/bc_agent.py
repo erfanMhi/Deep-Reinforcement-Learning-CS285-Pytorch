@@ -1,5 +1,4 @@
 import numpy as np
-import tensorflow as tf
 import time
 
 from .base_agent import BaseAgent
@@ -13,12 +12,10 @@ class BCAgent(BaseAgent):
 
         # init vars
         self.env = env
-        self.sess = sess
         self.agent_params = agent_params
 
         # actor/policy
-        self.actor = MLPPolicySL(sess,
-                               self.agent_params['ac_dim'],
+        self.actor = MLPPolicySL(self.agent_params['ac_dim'],
                                self.agent_params['ob_dim'],
                                self.agent_params['n_layers'],
                                self.agent_params['size'],

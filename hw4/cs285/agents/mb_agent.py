@@ -1,3 +1,5 @@
+import torch
+
 from .base_agent import BaseAgent
 from cs285.models.ff_model import FFModel
 from cs285.policies.MPC_policy import MPCPolicy
@@ -6,26 +8,27 @@ from cs285.infrastructure.utils import *
 
 
 class MBAgent(BaseAgent):
-    def __init__(self, sess, env, agent_params):
+    def __init__(self, env, agent_params):
         super(MBAgent, self).__init__()
 
         self.env = env.unwrapped 
-        self.sess = sess
         self.agent_params = agent_params
         self.ensemble_size = self.agent_params['ensemble_size']
+        self.device = self.agent_params['device']
 
         self.dyn_models = []
         for i in range(self.ensemble_size):
-            model = FFModel(sess,
+            model = FFModel(
                             self.agent_params['ac_dim'],
                             self.agent_params['ob_dim'],
                             self.agent_params['n_layers'],
                             self.agent_params['size'],
                             self.agent_params['learning_rate'],
-                            scope='dyn_model_{}'.format(i))
+                            scope='dyn_model_{}'.format(i),
+                            device=self.device)
             self.dyn_models.append(model)
 
-        self.actor = MPCPolicy(sess,
+        self.actor = MPCPolicy(
                                self.env,
                                ac_dim = self.agent_params['ac_dim'],
                                dyn_models = self.dyn_models,
@@ -47,13 +50,14 @@ class MBAgent(BaseAgent):
             
             # select which datapoints to use for this model of the ensemble
             # you might find the num_data_per_env variable defined above useful
-
-            observations = # TODO(Q1)
-            actions = # TODO(Q1)
-            next_observations = # TODO(Q1)
+            ens_top_idx = (i+1) * num_data_per_ens
+            ens_bottom_idx = i * num_data_per_ens
+            observations = ob_no[ens_bottom_idx: ens_top_idx]# TODO(Q1)
+            actions = ac_na[ens_bottom_idx: ens_top_idx] # TODO(Q1)
+            next_observations = next_ob_no[ens_bottom_idx: ens_top_idx] # TODO(Q1)
 
             # use datapoints to update one of the dyn_models
-            model =  # TODO(Q1)
+            model = self.dyn_models[i] # TODO(Q1)
             loss = model.update(observations, actions, next_observations, self.data_statistics)
             losses.append(loss)
 
@@ -77,6 +81,8 @@ class MBAgent(BaseAgent):
                                     self.replay_buffer.next_obs - self.replay_buffer.obs,
                                     axis=0),
                                 }
+
+        self.data_statistics = dict((k, torch.from_numpy(v).float().to(self.device)) for k, v in self.data_statistics.items())
 
         # update the actor's data_statistics too, so actor.get_action can be calculated correctly
         self.actor.data_statistics = self.data_statistics

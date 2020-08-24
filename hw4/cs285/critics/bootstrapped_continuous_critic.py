@@ -1,10 +1,15 @@
+import torch
+import numpy as np
+import torch.nn.functional as F
+
 from .base_critic import BaseCritic
-import tensorflow as tf
 from cs285.infrastructure.tf_utils import build_mlp
+from cs285.infrastructure.torch_utils import MLP, multivariate_normal_diag, convert_args_to_tensor
+from torch import optim
+
 
 class BootstrappedContinuousCritic(BaseCritic):
-    def __init__(self, sess, hparams):
-        self.sess = sess
+    def __init__(self, hparams):
         self.ob_dim = hparams['ob_dim']
         self.ac_dim = hparams['ac_dim']
         self.discrete = hparams['discrete']
@@ -14,7 +19,7 @@ class BootstrappedContinuousCritic(BaseCritic):
         self.num_target_updates = hparams['num_target_updates']
         self.num_grad_steps_per_target_update = hparams['num_grad_steps_per_target_update']
         self.gamma = hparams['gamma']
-
+        self.device = hparams['device']
         self._build()
 
     def _build(self):
@@ -35,52 +40,32 @@ class BootstrappedContinuousCritic(BaseCritic):
             is None
 
             ----------------------------------------------------------------------------------
-            loss: a function of self.sy_logprob_n and self.sy_adv_n that we will differentiate
+            loss: a function of self.sy_ob_no, self.sy_ac_na and self.sy_adv_n that we will differentiate
                 to get the policy gradient.
         """
-        self.sy_ob_no, self.sy_ac_na, self.sy_adv_n = self.define_placeholders()
-
         # define the critic
-        self.critic_prediction = tf.squeeze(build_mlp(
-            self.sy_ob_no,
-            1,
-            "nn_critic",
-            n_layers=self.n_layers,
-            size=self.size))
-        self.sy_target_n = tf.placeholder(shape=[None], name="critic_target", dtype=tf.float32)
-
+        self._critic_prediction = MLP(self.ob_dim, 1, self.n_layers, self.size).to(self.device)
+        self.critic_prediction = lambda ob: torch.squeeze(self._critic_prediction(ob))
         # TODO: set up the critic loss
         # HINT1: the critic_prediction should regress onto the targets placeholder (sy_target_n)
         # HINT2: use tf.losses.mean_squared_error
-        self.critic_loss = TODO
+        self.mse_criterion = torch.nn.MSELoss(reduction='mean')
 
         # TODO: use the AdamOptimizer to optimize the loss defined above
-        self.critic_update_op = TODO
+        self.optimizer = optim.Adam(self._critic_prediction.parameters(), lr=self.learning_rate)
 
-    def define_placeholders(self):
-        """
-            Placeholders for batch batch observations / actions / advantages in actor critic
-            loss function.
-            See Agent.build_computation_graph for notation
-
-            returns:
-                sy_ob_no: placeholder for observations
-                sy_ac_na: placeholder for actions
-                sy_adv_n: placeholder for advantages
-        """
-        sy_ob_no = tf.placeholder(shape=[None, self.ob_dim], name="ob", dtype=tf.float32)
-        if self.discrete:
-            sy_ac_na = tf.placeholder(shape=[None], name="ac", dtype=tf.int32)
-        else:
-            sy_ac_na = tf.placeholder(shape=[None, self.ac_dim], name="ac", dtype=tf.float32)
-        sy_adv_n = tf.placeholder(shape=[None], name="adv", dtype=tf.float32)
-        return sy_ob_no, sy_ac_na, sy_adv_n
-
-    def forward(self, ob):
+    @convert_args_to_tensor()
+    def forward(self, ob, get_torch=False):
         # TODO: run your critic
         # HINT: there's a neural network structure defined above with mlp layers, which serves as your 'critic'
-        return TODO
+        with torch.no_grad():
+            if get_torch:
+                return self.critic_prediction(ob)
+            
+            ob = ob.to(self.device)
+            return self.critic_prediction(ob).cpu().numpy()
 
+    @convert_args_to_tensor()
     def update(self, ob_no, next_ob_no, re_n, terminal_n):
         """
             Update the parameters of the critic.
@@ -99,7 +84,8 @@ class BootstrappedContinuousCritic(BaseCritic):
             returns:
                 loss
         """
-
+        ob_no, next_ob_no, re_n, terminal_n = \
+            [x.to(self.device) for x in [ob_no, next_ob_no, re_n, terminal_n]]
         # TODO: Implement the pseudocode below: 
 
         # do the following (self.num_grad_steps_per_target_update * self.num_target_updates) times:
@@ -116,7 +102,15 @@ class BootstrappedContinuousCritic(BaseCritic):
                 # HINT2: need to populate the following (in the feed_dict): 
                     #a) sy_ob_no with ob_no
                     #b) sy_target_n with target values calculated above
-        
-        TODO
+        # print(next_ob_no)
+        for _ in range(self.num_target_updates):
+            target_values = re_n + self.gamma*self.forward(next_ob_no, get_torch=True) * torch.logical_not(terminal_n)
+            for _ in range(self.num_grad_steps_per_target_update):
+                self.optimizer.zero_grad()
 
-        return loss
+                loss = self.mse_criterion(self.critic_prediction(ob_no), target_values)
+
+                loss.backward()
+                self.optimizer.step()
+
+        return loss.item()
