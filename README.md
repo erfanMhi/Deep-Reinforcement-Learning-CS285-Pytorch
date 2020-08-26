@@ -54,7 +54,7 @@ In this project, we aim to create a Pytorch version of CS285 course whose Tensor
 
 
 ### Completed So Far
-2. Homework 1, 2, and 3 Tensorflow codes have been fully replaced by Pytorch.
+2. Homework 1, 2, 3, and 4 Tensorflow codes have been fully replaced by Pytorch.
 
 <!-- GETTING STARTED -->
 ## Getting Started
