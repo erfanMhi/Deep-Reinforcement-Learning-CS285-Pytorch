@@ -5,8 +5,8 @@ Adapted for CS294-112 Fall 2018 by Soroush Nasiriany, Sid Reddy, and Greg Kahn
 Adapted for CS294-112 Fall 2018 with <3 by Michael Chang, some experiments by Greg Kahn, beta-tested by Sid Reddy
 """
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
+import torch
+import torch.nn as nn
 import gym
 import logz
 import os
@@ -16,35 +16,11 @@ from multiprocessing import Process
 
 from exploration import ExemplarExploration, DiscreteExploration, RBFExploration
 from density_model import Exemplar, Histogram, RBF
+from utils.pytorch_utils import *
 
 #============================================================================================#
 # Utilities
 #============================================================================================#
-
-def build_mlp(input_placeholder, output_size, scope, n_layers, size, activation=tf.tanh, output_activation=None):
-    """
-        Builds a feedforward neural network
-        
-        arguments:
-            input_placeholder: placeholder variable for the state (batch_size, input_size)
-            output_size: size of the output layer
-            scope: variable scope of the network
-            n_layers: number of hidden layers
-            size: dimension of the hidden layer
-            activation: activation of the hidden layers
-            output_activation: activation of the ouput layers
-
-        returns:
-            output placeholder of the network (the result of a forward pass) 
-
-        Hint: use tf.layers.dense    
-    """
-    output_placeholder = input_placeholder
-    with tf.variable_scope(scope):
-        for _ in range(n_layers):
-            output_placeholder = tf.layers.dense(output_placeholder, size, activation=activation)
-        output_placeholder = tf.layers.dense(output_placeholder, output_size, activation=output_activation)
-    return output_placeholder
 
 def pathlength(path):
     return len(path["reward"])
@@ -80,33 +56,15 @@ class Agent(object):
         self.gamma = estimate_advantage_args['gamma']
         self.normalize_advantages = estimate_advantage_args['normalize_advantages']
 
-    def init_tf_sess(self):
-        tf_config = tf.ConfigProto(inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
-        tf_config.gpu_options.allow_growth = True # may need if using GPU
-        self.sess = tf.Session(config=tf_config)
-        self.sess.__enter__() # equivalent to `with self.sess:`
-        tf.global_variables_initializer().run() #pylint: disable=E1101
+        self.device = computation_graph_args['device']
+        self._build_graph()
+    
+    def _build_graph(self):
+        self._build_actor()
+        self._build_critic()
 
-    def define_placeholders(self):
-        """
-            Placeholders for batch batch observations / actions / advantages in actor critic
-            loss function.
-            See Agent.build_computation_graph for notation
-
-            returns:
-                sy_ob_no: placeholder for observations
-                sy_ac_na: placeholder for actions
-                sy_adv_n: placeholder for advantages
-        """
-        sy_ob_no = tf.placeholder(shape=[None, self.ob_dim], name="ob", dtype=tf.float32)
-        if self.discrete:
-            sy_ac_na = tf.placeholder(shape=[None], name="ac", dtype=tf.int32) 
-        else:
-            sy_ac_na = tf.placeholder(shape=[None, self.ac_dim], name="ac", dtype=tf.float32) 
-        sy_adv_n = tf.placeholder(shape=[None], name="adv", dtype=tf.float32)
-        return sy_ob_no, sy_ac_na, sy_adv_n
-
-    def policy_forward_pass(self, sy_ob_no):
+    ##################### Building Actor #######################
+    def _policy_forward_pass(self):
         """ Constructs the symbolic operation for the policy network outputs,
             which are the parameters of the policy distribution p(a|s)
 
@@ -118,7 +76,7 @@ class Agent(object):
 
                 if discrete, the parameters are the logits of a categorical distribution
                     over the actions
-                    sy_logits_na: (batch_size, self.ac_dim)
+                    sy_probs_na: (batch_size, self.ac_dim)
 
                 if continuous, the parameters are a tuple (mean, log_std) of a Gaussian
                     distribution over actions. log_std should just be a trainable
@@ -132,6 +90,34 @@ class Agent(object):
                 pass in self.size for the 'size' argument.
         """
         if self.discrete:
+            sy_probs_na = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size, output_activation=nn.Softmax(dim=1))
+            self.policy_parameters = sy_probs_na.to(self.device)
+        else:
+            sy_mean = MLP(self.ob_dim, output_size=self.ac_dim, n_layers=self.n_layers, size=self.size)
+            sy_logstd = torch.zeros(self.ac_dim, requires_grad=True)
+            self.policy_parameters = (sy_mean.to(self.device), sy_logstd.to(self.device))
+
+        
+    def _define_actor_train_op(self):
+        
+        if self.discrete:
+            probs = self.policy_parameters
+            self.actor_optimizer = torch.optim.Adam(probs.parameters(), lr=self.learning_rate)
+        else:
+            mean, logstd = self.policy_parameters
+            self.actor_optimizer = torch.optim.Adam([logstd] + list(mean.parameters()), lr=self.learning_rate)
+              
+        self.mse_criterion = torch.nn.MSELoss(reduction='mean')
+
+    def _build_actor(self):
+
+        # defining forward pass of the policy
+        self.policy_forward_pass()
+
+        # define operation that are needed for backpropagation
+        self._define_actor_train_op()
+
+    def _define_log_prob(self, observation, action):
             sy_logits_na = build_mlp(sy_ob_no, self.ac_dim, 'discrete_logits', n_layers=self.n_layers, size=self.size)
             return sy_logits_na
         else:
@@ -178,7 +164,7 @@ class Agent(object):
             arguments:
                 policy_parameters
                     if discrete: logits of a categorical distribution over actions 
-                        sy_logits_na: (batch_size, self.ac_dim)
+                        sy_probs_na: (batch_size, self.ac_dim)
                     if continuous: (mean, log_std) of a Gaussian distribution over actions
                         sy_mean: (batch_size, self.ac_dim)
                         sy_logstd: (self.ac_dim,)
@@ -192,62 +178,77 @@ class Agent(object):
                 For the discrete case, use the log probability under a categorical distribution.
                 For the continuous case, use the log probability under a multivariate gaussian.
         """
+ 
         if self.discrete:
-            sy_logits_na = policy_parameters
-            sy_logprob_n = tf.distributions.Categorical(logits=sy_logits_na).log_prob(sy_ac_na)
+            #log probability under a categorical distribution
+            sy_probs_na = self.policy_parameters
+            sy_logprob_n = torch.distributions.Categorical(probs=sy_probs_na(observation)).log_prob(action)
         else:
-            sy_mean, sy_logstd = policy_parameters
-            sy_logprob_n = tfp.distributions.MultivariateNormalDiag(
-                loc=sy_mean, scale_diag=tf.exp(sy_logstd)).log_prob(sy_ac_na)  
+            #log probability under a multivariate gaussian
+            sy_mean, sy_logstd = self.policy_parameters
+            sy_logprob_n = multivariate_normal_diag(
+                loc=sy_mean(observation), scale_diag=torch.exp(sy_logstd)).log_prob(action)
         return sy_logprob_n
-
-    def build_computation_graph(self):
-        """
-            Notes on notation:
-            
-            Symbolic variables have the prefix sy_, to distinguish them from the numerical values
-            that are computed later in the function
-            
-            Prefixes and suffixes:
-            ob - observation 
-            ac - action
-            _no - this tensor should have shape (batch self.size /n/, observation dim)
-            _na - this tensor should have shape (batch self.size /n/, action dim)
-            _n  - this tensor should have shape (batch self.size /n/)
-            
-            Note: batch self.size /n/ is defined at runtime, and until then, the shape for that axis
-            is None
-
-            ----------------------------------------------------------------------------------
-            loss: a function of self.sy_logprob_n and self.sy_adv_n that we will differentiate
-                to get the policy gradient.
-        """
-        self.sy_ob_no, self.sy_ac_na, self.sy_adv_n = self.define_placeholders()
-
-        # The policy takes in an observation and produces a distribution over the action space
-        self.policy_parameters = self.policy_forward_pass(self.sy_ob_no)
-
-        # We can sample actions from this action distribution.
-        # This will be called in Agent.sample_trajectory() where we generate a rollout.
-        self.sy_sampled_ac = self.sample_action(self.policy_parameters)
-
-        # We can also compute the logprob of the actions that were actually taken by the policy
-        # This is used in the loss function.
-        self.sy_logprob_n = self.get_log_prob(self.policy_parameters, self.sy_ac_na)
-
-        actor_loss = tf.reduce_sum(-self.sy_logprob_n * self.sy_adv_n)
-        self.actor_update_op = tf.train.AdamOptimizer(self.learning_rate).minimize(actor_loss)
-
+    
+    ############################### Building Critic ##############################
+    
+    def _build_critic(self):
         # define the critic
-        self.critic_prediction = tf.squeeze(build_mlp(
-                                self.sy_ob_no,
-                                1,
-                                "nn_critic",
-                                n_layers=self.n_layers,
-                                size=self.size))
-        self.sy_target_n = tf.placeholder(shape=[None], name="critic_target", dtype=tf.float32)
-        self.critic_loss = tf.losses.mean_squared_error(self.sy_target_n, self.critic_prediction)
-        self.critic_update_op = tf.train.AdamOptimizer(self.learning_rate).minimize(self.critic_loss)
+        self._critic_prediction = MLP(self.ob_dim, 1, self.n_layers, self.size).to(self.device)
+        self.critic_prediction = lambda ob: torch.squeeze(self._critic_prediction(ob))
+
+        # use the AdamOptimizer to optimize the loss defined above
+        self.critic_optimizer = torch.optim.Adam(self._critic_prediction.parameters(), lr=self.learning_rate)
+   
+    def _sample_action(self, observation):
+        """ Constructs a symbolic operation for stochastically sampling from the policy
+            distribution
+
+            arguments:
+                policy_parameters
+                    if discrete: logits of a categorical distribution over actions 
+                        sy_probs_na: (batch_size, self.ac_dim)
+                    if continuous: (mean, log_std) of a Gaussian distribution over actions
+                        sy_mean: (batch_size, self.ac_dim)
+                        sy_logstd: (self.ac_dim,)
+
+            returns:
+                sy_sampled_ac: 
+                    if discrete: (batch_size)
+                    if continuous: (batch_size, self.ac_dim)
+
+            Hint: for the continuous case, use the reparameterization trick:
+                 The output from a Gaussian distribution with mean 'mu' and std 'sigma' is
+        
+                      mu + sigma * z,         z ~ N(0, I)
+        
+                 This reduces the problem to just sampling z. (Hint: use tf.random_normal!)
+        """
+        if self.discrete:
+            sy_probs_na = self.policy_parameters
+            sample_ac = torch.squeeze(torch.multinomial(sy_probs_na(observation), num_samples=1), dim=1) # BUG maybe bug happens here
+        else:
+            sy_mean, sy_logstd = self.policy_parameters
+            probs_out = sy_mean(observation)
+            sample_ac = probs_out + torch.exp(sy_logstd) * torch.randn(probs_out.size(), device=self.device) # BUG
+        return sample_ac
+
+
+    @convert_args_to_tensor()
+    def get_action(self, obs):
+        with torch.no_grad():
+            if len(obs.shape)>1:
+                observation = obs.to(self.device)
+            else:
+                observation = obs[None].to(self.device)
+
+            # observation = torch.from_numpy(observation).type(torch.FloatTensor)
+
+            # TODO return the action that the policy prescribes
+            # HINT1: you will need to call self.sess.run
+            # HINT2: the tensor we're interested in evaluating is self.sample_ac
+            # HINT3: in order to run self.sample_ac, it will need observation fed into the feed_dict
+            return  self._sample_action(observation).cpu().numpy()
 
     def sample_trajectories(self, itr, env):
         # Collect paths until we have enough timesteps
@@ -271,7 +272,7 @@ class Agent(object):
                 env.render()
                 time.sleep(0.1)
             obs.append(ob)
-            ac = self.sess.run(self.sy_sampled_ac, feed_dict={self.sy_ob_no : ob[None]})
+            ac = self.get_action(ob)
             ac = ac[0]
             acs.append(ac)
             ob, rew, done, _ = env.step(ac)
@@ -289,6 +290,16 @@ class Agent(object):
                 "next_observation": np.array(next_obs, dtype=np.float32),
                 "terminal": np.array(terminals, dtype=np.float32)}
         return path
+
+    @convert_args_to_tensor()
+    def critic_forward(self, ob, get_torch=False):
+        # run your critic
+        with torch.no_grad():
+            if get_torch:
+                return self.critic_prediction(ob)
+            
+            ob = ob.to(self.device)
+            return self.critic_prediction(ob).cpu().numpy()
 
     def estimate_advantage(self, ob_no, next_ob_no, re_n, terminal_n):
         """
@@ -309,15 +320,13 @@ class Agent(object):
                 adv_n: shape: (sum_of_path_lengths). A single vector for the estimated 
                     advantages whose length is the sum of the lengths of the paths
         """
-        next_values_n = self.sess.run(self.critic_prediction, feed_dict={self.sy_ob_no: next_ob_no})
-        q_n = re_n + self.gamma * next_values_n * (1-terminal_n)
-        curr_values_n = self.sess.run(self.critic_prediction, feed_dict={self.sy_ob_no: ob_no})
-        adv_n = q_n - curr_values_n
-
+        
+        adv_n = re_n - self.critic_forward(ob_no) + self.gamma*self.critic_forward(next_ob_no) *  np.logical_not(terminal_n)
         if self.normalize_advantages:
             adv_n = (adv_n - np.mean(adv_n)) / (np.std(adv_n) + 1e-8)
         return adv_n
 
+    @convert_args_to_tensor()
     def update_critic(self, ob_no, next_ob_no, re_n, terminal_n):
         """
             Update the parameters of the critic.
@@ -337,13 +346,21 @@ class Agent(object):
             returns:
                 nothing
         """
+        ob_no, next_ob_no, re_n, terminal_n = \
+            [x.to(self.device) for x in [ob_no, next_ob_no, re_n, terminal_n]]
+
         for i in range(self.num_grad_steps_per_target_update * self.num_target_updates):
             if i % self.num_grad_steps_per_target_update == 0:
-                next_values_n = self.sess.run(self.critic_prediction, feed_dict={self.sy_ob_no: next_ob_no})
-                target_n = re_n + self.gamma * next_values_n * (1 - terminal_n)
-            _, loss = self.sess.run([self.critic_update_op, self.critic_loss],
-                                    feed_dict={self.sy_ob_no: ob_no, self.sy_target_n: target_n})
+                target_values = re_n + self.gamma*self.critic_forward(next_ob_no, get_torch=True) * torch.logical_not(terminal_n)
+            
+            self.critic_optimizer.zero_grad()
 
+            loss = self.mse_criterion(self.critic_prediction(ob_no), target_values)
+
+            loss.backward()
+            self.critic_optimizer.step()
+
+    @convert_args_to_tensor()
     def update_actor(self, ob_no, ac_na, adv_n):
         """ 
             Update the parameters of the policy.
@@ -358,9 +375,19 @@ class Agent(object):
                 nothing
 
         """
-        self.sess.run(self.actor_update_op,
-            feed_dict={self.sy_ob_no: ob_no, self.sy_ac_na: ac_na, self.sy_adv_n: adv_n})
+    
+        observations, acs_na, adv_n = \
+            [x.to(self.device) if x is not None else None for x in [ob_no, ac_na, adv_n]] 
 
+        self.actor_optimizer.zero_grad()
+        
+        logprob_n = self._define_log_prob(observations, acs_na)
+
+        loss = -1 * torch.sum(logprob_n * adv_n)
+
+
+        loss.backward()
+        self.actor_optimizer.step()
 
 def train_AC(
         exp_name,
@@ -536,19 +563,19 @@ def train_AC(
             if dm == 'ex2':
                 ### PROBLEM 3
                 ### YOUR CODE HERE
-                raise NotImplementedError
+                ll, kl, elbo = exploration.fit_density_model(ob_no)
             elif dm == 'hist' or dm == 'rbf':
                 ### PROBLEM 1
                 ### YOUR CODE HERE
-                raise NotImplementedError
+                exploration.fit_density_model(ob_no)
             else:
                 assert False
 
             # 2. Modify the reward
             ### PROBLEM 1
             ### YOUR CODE HERE
-            raise NotImplementedError
-
+            re_n = exploration.modify_reward(re_n, ob_no)
+            
             print('average state', np.mean(ob_no, axis=0))
             print('average action', np.mean(ac_na, axis=0))
 
